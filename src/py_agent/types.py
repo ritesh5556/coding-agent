@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Annotated, Any, Awaitable, Callable, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -318,7 +319,8 @@ GetMessagesHook = Callable[[], Awaitable[list[AgentMessage]]]
 TransformContextHook = Callable[[AgentContext], AgentLoopTurnUpdate]
 
 
-class AgentLoopConfig(BaseModel):
+@dataclass
+class AgentLoopConfig:
     model: str
     stream_fn: StreamFn
     api_key: Optional[str] = None
@@ -329,5 +331,3 @@ class AgentLoopConfig(BaseModel):
     get_steering_messages: Optional[GetMessagesHook] = None
     get_follow_up_messages: Optional[GetMessagesHook] = None
     signal: Optional[Any] = None
-
-    model_config = {"arbitrary_types_allowed": True}
