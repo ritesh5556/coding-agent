@@ -248,6 +248,7 @@ AgentToolUpdateCallback = Callable[[Any], None]
 class AgentToolResult(BaseModel):
     content: list[ToolResultContent]
     details: Optional[Any] = None
+    is_error: bool = False
     terminate: bool = False
 
 

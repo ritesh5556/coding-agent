@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import AsyncGenerator
 
 from .tools.executor import execute_tool_calls
-from .types import (
+from .utils.types import (
     AgentContext,
     AgentEndEvent,
     AgentEvent,

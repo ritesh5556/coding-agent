@@ -107,7 +107,7 @@ async def _execute_one(
 
     # ── Phase 3: Finalize ───────────────────────────────────────────────────
 
-    is_error = False
+    is_error = result.is_error
     should_terminate = result.terminate
 
     if after_tool_call is not None:
