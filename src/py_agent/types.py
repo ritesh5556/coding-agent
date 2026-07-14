@@ -308,3 +308,26 @@ class AgentLoopTurnUpdate(BaseModel):
 
 
 StreamFn = Callable[..., Awaitable["AssistantMessageEventStream"]]  # type: ignore[name-defined]
+
+
+QueueMode = Literal["all", "one-at-a-time"]
+
+BeforeToolCallHook = Callable[[BeforeToolCallContext], Awaitable[Optional[BeforeToolCallResult]]]
+AfterToolCallHook = Callable[[AfterToolCallContext], Awaitable[Optional[AfterToolCallResult]]]
+GetMessagesHook = Callable[[], Awaitable[list[AgentMessage]]]
+TransformContextHook = Callable[[AgentContext], AgentLoopTurnUpdate]
+
+
+class AgentLoopConfig(BaseModel):
+    model: str
+    stream_fn: StreamFn
+    api_key: Optional[str] = None
+    execution_mode: ToolExecutionMode = "parallel"
+    before_tool_call: Optional[BeforeToolCallHook] = None
+    after_tool_call: Optional[AfterToolCallHook] = None
+    transform_context: Optional[TransformContextHook] = None
+    get_steering_messages: Optional[GetMessagesHook] = None
+    get_follow_up_messages: Optional[GetMessagesHook] = None
+    signal: Optional[Any] = None
+
+    model_config = {"arbitrary_types_allowed": True}
