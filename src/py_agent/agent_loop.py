@@ -26,10 +26,15 @@ async def _run(
     config: AgentLoopConfig,
 ) -> AsyncGenerator[AgentEvent, None]:
     all_new_messages: list[AgentMessage] = []
+    turn_count = 0
 
     yield AgentStartEvent()
 
     while True:
+        if config.max_turns is not None and turn_count >= config.max_turns:
+            break
+        turn_count += 1
+
         turn_messages = list(input_messages)
 
         yield TurnStartEvent()
@@ -68,6 +73,7 @@ async def _run(
                 final_message = llm_event.message
             elif llm_event.type == "error":
                 final_message = llm_event.error
+                yield MessageUpdateEvent(message=llm_event.error, llm_event=llm_event)
 
         if final_message is None:
             final_message = await stream.result()
@@ -77,6 +83,10 @@ async def _run(
 
         yield MessageEndEvent(message=final_message)
         all_new_messages.append(final_message)
+
+        if final_message.stop_reason in ("error", "aborted"):
+            yield TurnEndEvent(message=final_message, tool_results=[])
+            break
 
         tool_calls = [c for c in final_message.content if isinstance(c, ToolCall)]
 
@@ -116,6 +126,9 @@ async def _run(
         )
 
         if should_terminate:
+            break
+
+        if config.signal is not None and config.signal.is_set():
             break
 
         if tool_calls:

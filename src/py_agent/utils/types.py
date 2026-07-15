@@ -242,6 +242,20 @@ AgentEvent = Annotated[
 # Tool interface
 # ---------------------------------------------------------------------------
 
+class CompactionSettings(BaseModel):
+    context_window: int = 128000
+    reserve_tokens: int = 16384
+    keep_recent_tokens: int = 20000
+
+
+TodoStatus = Literal["pending", "in_progress", "completed"]
+
+
+class TodoItem(BaseModel):
+    content: str
+    status: TodoStatus = "pending"
+
+
 AgentToolUpdateCallback = Callable[[Any], None]
 
 
@@ -332,3 +346,4 @@ class AgentLoopConfig:
     get_steering_messages: Optional[GetMessagesHook] = None
     get_follow_up_messages: Optional[GetMessagesHook] = None
     signal: Optional[Any] = None
+    max_turns: Optional[int] = None

@@ -278,9 +278,6 @@ async def make_faux_stream(responses: list[str | list[ToolCall]]) -> StreamFn:
 
 ```
 py-agent/
-├── .claude/
-│   └── skills/
-│       └── py-agent-dev.md       ← skill for Claude Code sessions
 ├── src/
 │   └── py_agent/
 │       ├── __init__.py

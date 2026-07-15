@@ -48,7 +48,11 @@ def create_bash_tool(cwd: str) -> AgentTool:
 
     return AgentTool(
         name="bash",
-        description="Execute a bash command in the working directory. Returns stdout, stderr, and exit code. Output truncated to 2000 lines or 50KB.",
+        description=(
+            "Execute a bash command in the working directory. Returns stdout, stderr, and exit code. "
+            "Output is truncated to 2000 lines or 50KB. Use the read, grep, find, and ls tools instead of "
+            "cat/grep/find/ls shell commands. Use bash for builds, tests, git, and other real commands."
+        ),
         parameters=PARAMETERS,
         execute=execute,
     )

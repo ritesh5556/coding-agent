@@ -7,7 +7,9 @@ import sys
 from .agent import Agent
 from .llm.groq import groq_stream
 from .utils.system_prompt import build_system_prompt
-from .tools.builtin import create_coding_tools
+from .utils.session import load_session, save_session
+from .utils.types import CompactionSettings
+from .tools.builtin import create_coding_tools, create_task_tool
 
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
@@ -18,7 +20,14 @@ def render_event(event) -> None:
         if llm_event.type == "text_delta":
             print(llm_event.delta, end="", flush=True)
     elif event.type == "message_end" and event.message.role == "assistant":
-        print()
+        message = event.message
+        if getattr(message, "stop_reason", None) == "error":
+            detail = message.error_message or (
+                message.content[0].text if message.content else "unknown error"
+            )
+            print(f"\n[error] {detail}", file=sys.stderr)
+        else:
+            print()
     elif event.type == "tool_execution_start":
         print(f"\n[tool] {event.tool_name}({event.args})")
     elif event.type == "tool_execution_end":
@@ -35,6 +44,7 @@ async def main() -> None:
 
     cwd = os.getcwd()
     tools = create_coding_tools(cwd)
+    tools.append(create_task_tool(cwd, DEFAULT_MODEL, groq_stream, api_key))
     system_prompt = build_system_prompt(cwd, tools)
 
     agent = Agent(
@@ -43,10 +53,11 @@ async def main() -> None:
         system_prompt=system_prompt,
         tools=tools,
         api_key=api_key,
+        compaction=CompactionSettings(),
     )
     agent.subscribe(render_event)
 
-    print(f"py-agent ready. cwd={cwd}. Type /quit to exit.")
+    print(f"py-agent ready. cwd={cwd}. Commands: /save <file>, /load <file>, /quit.")
 
     while True:
         try:
@@ -55,9 +66,28 @@ async def main() -> None:
             print()
             break
 
-        if line.strip() in ("/quit", "/exit"):
+        stripped = line.strip()
+        if stripped in ("/quit", "/exit"):
             break
-        if not line.strip():
+        if not stripped:
+            continue
+
+        if stripped.startswith("/save "):
+            target = stripped[len("/save "):].strip()
+            try:
+                save_session(target, agent.messages)
+                print(f"[saved {len(agent.messages)} messages to {target}]")
+            except Exception as exc:
+                print(f"\n[error] {exc}", file=sys.stderr)
+            continue
+
+        if stripped.startswith("/load "):
+            target = stripped[len("/load "):].strip()
+            try:
+                agent.messages = load_session(target)
+                print(f"[loaded {len(agent.messages)} messages from {target}]")
+            except Exception as exc:
+                print(f"\n[error] {exc}", file=sys.stderr)
             continue
 
         try:

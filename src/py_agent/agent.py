@@ -4,12 +4,15 @@ import asyncio
 from typing import Awaitable, Callable, Optional, Union
 
 from .agent_loop import run_agent_loop
+from .utils.compaction import compact as compact_messages
+from .utils.compaction import should_compact
 from .utils.types import (
     AgentContext,
     AgentEvent,
     AgentLoopConfig,
     AgentMessage,
     AgentTool,
+    CompactionSettings,
     QueueMode,
     StreamFn,
     TextContent,
@@ -41,6 +44,8 @@ class Agent:
         before_tool_call=None,
         after_tool_call=None,
         transform_context=None,
+        max_turns: Optional[int] = 100,
+        compaction: Optional[CompactionSettings] = None,
     ) -> None:
         self.model = model
         self.system_prompt = system_prompt
@@ -58,6 +63,8 @@ class Agent:
         self._before_tool_call = before_tool_call
         self._after_tool_call = after_tool_call
         self._transform_context = transform_context
+        self._max_turns = max_turns
+        self._compaction = compaction
 
         self._subscribers: set[AgentEventSink] = set()
         self._steer_queue: list[AgentMessage] = []
@@ -121,6 +128,15 @@ class Agent:
         self.is_streaming = True
         self.error_message = None
 
+        if self._compaction is not None and should_compact(self.messages, self._compaction):
+            self.messages = await compact_messages(
+                self.messages,
+                self.model,
+                self._stream_fn,
+                self._compaction,
+                self._api_key,
+            )
+
         context = AgentContext(
             system_prompt=self.system_prompt,
             messages=list(self.messages),
@@ -138,6 +154,7 @@ class Agent:
             get_steering_messages=lambda: self._drain_queue(self._steer_queue, self._steer_mode),
             get_follow_up_messages=lambda: self._drain_queue(self._follow_up_queue, self._follow_up_mode),
             signal=self._signal,
+            max_turns=self._max_turns,
         )
 
         self._task = asyncio.current_task()

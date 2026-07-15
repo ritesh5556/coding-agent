@@ -126,7 +126,6 @@ async def _fill_stream(
             "model": model_id,
             "messages": api_messages,
             "stream": True,
-            "stream_options": {"include_usage": True},
         }
         if context.system_prompt:
             kwargs["messages"] = [{"role": "system", "content": context.system_prompt}] + api_messages
@@ -172,7 +171,7 @@ async def _fill_stream(
                         tc_acc[idx] = {
                             "id": tc_delta.id or "",
                             "name": (tc_delta.function.name or "") if tc_delta.function else "",
-                            "arguments": "",
+                            "arguments": (tc_delta.function.arguments or "") if tc_delta.function else "",
                         }
                     else:
                         if tc_delta.id:

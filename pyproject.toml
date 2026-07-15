@@ -1,9 +1,23 @@
 [project]
 name = "py-agent"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Python port of the pi agent architecture — lite coding agent"
 readme = "README.md"
-requires-python = ">=3.12"
+license = "MIT"
+requires-python = ">=3.10"
+keywords = ["agent", "llm", "coding-agent", "groq", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
 dependencies = [
     "groq>=0.11.0",
     "pydantic>=2.0.0",
@@ -17,8 +31,14 @@ py-agent = "py_agent.__main__:cli"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.version]
+path = "src/py_agent/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/py_agent"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/py_agent", "README.md", "pyproject.toml"]
 
 [dependency-groups]
 dev = [
@@ -28,3 +48,5 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]

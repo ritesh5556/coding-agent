@@ -46,7 +46,11 @@ def create_edit_tool(cwd: str) -> AgentTool:
 
     return AgentTool(
         name="edit",
-        description="Replace exact text in a file. old_string must match exactly once in the file.",
+        description=(
+            "Replace exact text in an existing file. old_string must match exactly once — include enough "
+            "surrounding context to make it unique. Read the file first. Prefer edit over write for changing "
+            "part of a file."
+        ),
         parameters=PARAMETERS,
         execute=execute,
     )

@@ -41,7 +41,11 @@ def create_read_tool(cwd: str) -> AgentTool:
 
     return AgentTool(
         name="read",
-        description="Read the contents of a file. Supports offset/limit for large files. Output truncated to 2000 lines or 50KB.",
+        description=(
+            "Read a file's contents. Use offset/limit to page through large files. "
+            "Output is truncated to 2000 lines or 50KB. "
+            "Read a file before editing it; do not re-read a file you just wrote or edited."
+        ),
         parameters=PARAMETERS,
         execute=execute,
     )
