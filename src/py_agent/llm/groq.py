@@ -8,7 +8,7 @@ from typing import Any
 from groq import AsyncGroq
 
 from ..stream import AssistantMessageEventStream
-from ..types import (
+from ..utils.types import (
     EMPTY_USAGE,
     AgentContext,
     AgentMessage,
@@ -237,7 +237,7 @@ async def _fill_stream(
         stream.fail(exc)
 
 
-def groq_stream(
+async def groq_stream(
     model_id: str,
     context: AgentContext,
     api_key: str | None = None,

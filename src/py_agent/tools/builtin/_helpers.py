@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from ...types import AgentToolResult, ToolResultContent
+from ...utils.types import AgentToolResult, ToolResultContent
 
 DEFAULT_MAX_LINES = 2000
 DEFAULT_MAX_BYTES = 50 * 1024

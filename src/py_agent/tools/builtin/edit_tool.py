@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from ...types import AgentTool, AgentToolResult
+from ...utils.types import AgentTool, AgentToolResult
 from ._helpers import err, ok, resolve_to_cwd
 
 PARAMETERS = {

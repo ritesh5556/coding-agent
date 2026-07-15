@@ -5,7 +5,7 @@ from typing import Awaitable, Callable, Optional
 
 import jsonschema
 
-from ..types import (
+from ..utils.types import (
     AfterToolCallContext,
     AfterToolCallResult,
     AgentEvent,

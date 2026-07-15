@@ -4,7 +4,7 @@ import asyncio
 from typing import Awaitable, Callable, Optional, Union
 
 from .agent_loop import run_agent_loop
-from .types import (
+from .utils.types import (
     AgentContext,
     AgentEvent,
     AgentLoopConfig,

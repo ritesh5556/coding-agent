@@ -44,7 +44,7 @@ class EventStream(Generic[T, R]):
         return self._result  # type: ignore[return-value]
 
 
-from .types import AssistantMessage, LlmStreamEvent  # noqa: E402
+from .utils.types import AssistantMessage, LlmStreamEvent  # noqa: E402
 
 
 class AssistantMessageEventStream(EventStream[LlmStreamEvent, AssistantMessage]):
