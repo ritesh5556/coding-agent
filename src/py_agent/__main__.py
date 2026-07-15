@@ -11,7 +11,7 @@ from .utils.session import load_session, save_session
 from .utils.types import CompactionSettings
 from .tools.builtin import create_coding_tools, create_task_tool
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 
 def render_event(event) -> None:
