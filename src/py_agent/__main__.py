@@ -6,6 +6,8 @@ import sys
 from typing import Optional
 
 from dotenv import load_dotenv
+from prompt_toolkit import PromptSession
+from prompt_toolkit.patch_stdout import patch_stdout
 
 from .agent import Agent
 from .llm.groq import groq_stream
@@ -28,7 +30,7 @@ def render_event(event) -> None:
             detail = message.error_message or (
                 message.content[0].text if message.content else "unknown error"
             )
-            print(f"\n[error] {detail}", file=sys.stderr)
+            print(f"\n[error] {detail}")
         else:
             print()
     elif event.type == "tool_execution_start":
@@ -37,14 +39,6 @@ def render_event(event) -> None:
         text = event.result.content[0].text if event.result.content else ""
         status = "error" if event.is_error else "done"
         print(f"[tool {status}] {text[:300]}")
-
-
-async def _stdin_reader(line_queue: "asyncio.Queue[Optional[str]]") -> None:
-    while True:
-        line = await asyncio.to_thread(sys.stdin.readline)
-        await line_queue.put(line if line != "" else None)
-        if line == "":
-            return
 
 
 def route_streaming_line(agent: Agent, line: str) -> Optional[str]:
@@ -77,10 +71,12 @@ def route_streaming_line(agent: Agent, line: str) -> Optional[str]:
 async def _run_streaming(
     agent: Agent,
     run_task: "asyncio.Task",
-    line_queue: "asyncio.Queue[Optional[str]]",
-) -> bool:
+    session: PromptSession,
+) -> None:
     while True:
-        get_line = asyncio.ensure_future(line_queue.get())
+        get_line = asyncio.ensure_future(
+            session.prompt_async("(steer) ")
+        )
         done, _ = await asyncio.wait(
             {run_task, get_line}, return_when=asyncio.FIRST_COMPLETED
         )
@@ -88,21 +84,26 @@ async def _run_streaming(
         if run_task in done:
             get_line.cancel()
             try:
+                await get_line
+            except (asyncio.CancelledError, EOFError, KeyboardInterrupt):
+                pass
+            try:
                 await run_task
             except asyncio.CancelledError:
                 pass
             except Exception as exc:
                 print(f"\n[error] {exc}", file=sys.stderr)
-            return True
+            return
 
-        line = get_line.result()
-        if line is None:
+        try:
+            line = get_line.result()
+        except (EOFError, KeyboardInterrupt):
             agent.abort()
             try:
                 await run_task
             except (asyncio.CancelledError, Exception):
                 pass
-            return False
+            return
 
         status = route_streaming_line(agent, line)
         if status is not None:
@@ -136,14 +137,13 @@ async def main() -> None:
         f"While running: type to queue a follow-up, /steer <msg> to inject, /abort to stop."
     )
 
-    line_queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
-    reader_task = asyncio.ensure_future(_stdin_reader(line_queue))
+    session: PromptSession = PromptSession()
 
-    try:
+    with patch_stdout():
         while True:
-            print("\n> ", end="", flush=True)
-            line = await line_queue.get()
-            if line is None:
+            try:
+                line = await session.prompt_async("\n> ")
+            except (EOFError, KeyboardInterrupt):
                 print()
                 break
 
@@ -172,9 +172,7 @@ async def main() -> None:
                 continue
 
             run_task = asyncio.ensure_future(agent.prompt(line))
-            await _run_streaming(agent, run_task, line_queue)
-    finally:
-        reader_task.cancel()
+            await _run_streaming(agent, run_task, session)
 
 
 def cli() -> None:
