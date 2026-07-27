@@ -3,111 +3,17 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Optional
 
 from dotenv import load_dotenv
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
 
-from .agent import Agent
 from .llm.groq import groq_stream
 from .utils.system_prompt import build_system_prompt
-from .utils.session import load_session, save_session
 from .utils.types import CompactionSettings
 from .tools.builtin import create_coding_tools, create_task_tool
+from .agent import Agent
+from .tui import PyAgentApp
 
 DEFAULT_MODEL = "openai/gpt-oss-120b"
-
-
-def render_event(event) -> None:
-    if event.type == "message_update":
-        llm_event = event.llm_event
-        if llm_event.type == "text_delta":
-            print(llm_event.delta, end="", flush=True)
-    elif event.type == "message_end" and event.message.role == "assistant":
-        message = event.message
-        if getattr(message, "stop_reason", None) == "error":
-            detail = message.error_message or (
-                message.content[0].text if message.content else "unknown error"
-            )
-            print(f"\n[error] {detail}")
-        else:
-            print()
-    elif event.type == "tool_execution_start":
-        print(f"\n[tool] {event.tool_name}({event.args})")
-    elif event.type == "tool_execution_end":
-        text = event.result.content[0].text if event.result.content else ""
-        status = "error" if event.is_error else "done"
-        print(f"[tool {status}] {text[:300]}")
-
-
-def route_streaming_line(agent: Agent, line: str) -> Optional[str]:
-    stripped = line.strip()
-    if not stripped:
-        return None
-
-    if stripped == "/abort":
-        agent.abort()
-        return "[aborting]"
-
-    if stripped.startswith("/steer "):
-        message = stripped[len("/steer "):].strip()
-        if not message:
-            return None
-        agent.steer(message)
-        return "[queued steering]"
-
-    if stripped.startswith("/followup "):
-        message = stripped[len("/followup "):].strip()
-        if not message:
-            return None
-        agent.follow_up(message)
-        return "[queued follow-up]"
-
-    agent.follow_up(stripped)
-    return "[queued follow-up]"
-
-
-async def _run_streaming(
-    agent: Agent,
-    run_task: "asyncio.Task",
-    session: PromptSession,
-) -> None:
-    while True:
-        get_line = asyncio.ensure_future(
-            session.prompt_async("(steer) ")
-        )
-        done, _ = await asyncio.wait(
-            {run_task, get_line}, return_when=asyncio.FIRST_COMPLETED
-        )
-
-        if run_task in done:
-            get_line.cancel()
-            try:
-                await get_line
-            except (asyncio.CancelledError, EOFError, KeyboardInterrupt):
-                pass
-            try:
-                await run_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as exc:
-                print(f"\n[error] {exc}", file=sys.stderr)
-            return
-
-        try:
-            line = get_line.result()
-        except (EOFError, KeyboardInterrupt):
-            agent.abort()
-            try:
-                await run_task
-            except (asyncio.CancelledError, Exception):
-                pass
-            return
-
-        status = route_streaming_line(agent, line)
-        if status is not None:
-            print(status)
 
 
 async def main() -> None:
@@ -130,49 +36,10 @@ async def main() -> None:
         api_key=api_key,
         compaction=CompactionSettings(),
     )
-    agent.subscribe(render_event)
 
-    print(
-        f"py-agent ready. cwd={cwd}. Commands: /save <file>, /load <file>, /quit. "
-        f"While running: type to queue a follow-up, /steer <msg> to inject, /abort to stop."
-    )
-
-    session: PromptSession = PromptSession()
-
-    with patch_stdout():
-        while True:
-            try:
-                line = await session.prompt_async("\n> ")
-            except (EOFError, KeyboardInterrupt):
-                print()
-                break
-
-            stripped = line.strip()
-            if stripped in ("/quit", "/exit"):
-                break
-            if not stripped:
-                continue
-
-            if stripped.startswith("/save "):
-                target = stripped[len("/save "):].strip()
-                try:
-                    save_session(target, agent.messages)
-                    print(f"[saved {len(agent.messages)} messages to {target}]")
-                except Exception as exc:
-                    print(f"\n[error] {exc}", file=sys.stderr)
-                continue
-
-            if stripped.startswith("/load "):
-                target = stripped[len("/load "):].strip()
-                try:
-                    agent.messages = load_session(target)
-                    print(f"[loaded {len(agent.messages)} messages from {target}]")
-                except Exception as exc:
-                    print(f"\n[error] {exc}", file=sys.stderr)
-                continue
-
-            run_task = asyncio.ensure_future(agent.prompt(line))
-            await _run_streaming(agent, run_task, session)
+    app = PyAgentApp(agent, cwd)
+    agent.subscribe(app.on_agent_event)
+    await app.run_async()
 
 
 def cli() -> None:
