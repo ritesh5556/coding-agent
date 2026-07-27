@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from typing import Optional
+
+from dotenv import load_dotenv
 
 from .agent import Agent
 from .llm.groq import groq_stream
@@ -36,7 +39,78 @@ def render_event(event) -> None:
         print(f"[tool {status}] {text[:300]}")
 
 
+async def _stdin_reader(line_queue: "asyncio.Queue[Optional[str]]") -> None:
+    while True:
+        line = await asyncio.to_thread(sys.stdin.readline)
+        await line_queue.put(line if line != "" else None)
+        if line == "":
+            return
+
+
+def route_streaming_line(agent: Agent, line: str) -> Optional[str]:
+    stripped = line.strip()
+    if not stripped:
+        return None
+
+    if stripped == "/abort":
+        agent.abort()
+        return "[aborting]"
+
+    if stripped.startswith("/steer "):
+        message = stripped[len("/steer "):].strip()
+        if not message:
+            return None
+        agent.steer(message)
+        return "[queued steering]"
+
+    if stripped.startswith("/followup "):
+        message = stripped[len("/followup "):].strip()
+        if not message:
+            return None
+        agent.follow_up(message)
+        return "[queued follow-up]"
+
+    agent.follow_up(stripped)
+    return "[queued follow-up]"
+
+
+async def _run_streaming(
+    agent: Agent,
+    run_task: "asyncio.Task",
+    line_queue: "asyncio.Queue[Optional[str]]",
+) -> bool:
+    while True:
+        get_line = asyncio.ensure_future(line_queue.get())
+        done, _ = await asyncio.wait(
+            {run_task, get_line}, return_when=asyncio.FIRST_COMPLETED
+        )
+
+        if run_task in done:
+            get_line.cancel()
+            try:
+                await run_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                print(f"\n[error] {exc}", file=sys.stderr)
+            return True
+
+        line = get_line.result()
+        if line is None:
+            agent.abort()
+            try:
+                await run_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            return False
+
+        status = route_streaming_line(agent, line)
+        if status is not None:
+            print(status)
+
+
 async def main() -> None:
+    load_dotenv()
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         print("GROQ_API_KEY not set.", file=sys.stderr)
@@ -57,43 +131,50 @@ async def main() -> None:
     )
     agent.subscribe(render_event)
 
-    print(f"py-agent ready. cwd={cwd}. Commands: /save <file>, /load <file>, /quit.")
+    print(
+        f"py-agent ready. cwd={cwd}. Commands: /save <file>, /load <file>, /quit. "
+        f"While running: type to queue a follow-up, /steer <msg> to inject, /abort to stop."
+    )
 
-    while True:
-        try:
-            line = input("\n> ")
-        except (EOFError, KeyboardInterrupt):
-            print()
-            break
+    line_queue: "asyncio.Queue[Optional[str]]" = asyncio.Queue()
+    reader_task = asyncio.ensure_future(_stdin_reader(line_queue))
 
-        stripped = line.strip()
-        if stripped in ("/quit", "/exit"):
-            break
-        if not stripped:
-            continue
+    try:
+        while True:
+            print("\n> ", end="", flush=True)
+            line = await line_queue.get()
+            if line is None:
+                print()
+                break
 
-        if stripped.startswith("/save "):
-            target = stripped[len("/save "):].strip()
-            try:
-                save_session(target, agent.messages)
-                print(f"[saved {len(agent.messages)} messages to {target}]")
-            except Exception as exc:
-                print(f"\n[error] {exc}", file=sys.stderr)
-            continue
+            stripped = line.strip()
+            if stripped in ("/quit", "/exit"):
+                break
+            if not stripped:
+                continue
 
-        if stripped.startswith("/load "):
-            target = stripped[len("/load "):].strip()
-            try:
-                agent.messages = load_session(target)
-                print(f"[loaded {len(agent.messages)} messages from {target}]")
-            except Exception as exc:
-                print(f"\n[error] {exc}", file=sys.stderr)
-            continue
+            if stripped.startswith("/save "):
+                target = stripped[len("/save "):].strip()
+                try:
+                    save_session(target, agent.messages)
+                    print(f"[saved {len(agent.messages)} messages to {target}]")
+                except Exception as exc:
+                    print(f"\n[error] {exc}", file=sys.stderr)
+                continue
 
-        try:
-            await agent.prompt(line)
-        except Exception as exc:
-            print(f"\n[error] {exc}", file=sys.stderr)
+            if stripped.startswith("/load "):
+                target = stripped[len("/load "):].strip()
+                try:
+                    agent.messages = load_session(target)
+                    print(f"[loaded {len(agent.messages)} messages from {target}]")
+                except Exception as exc:
+                    print(f"\n[error] {exc}", file=sys.stderr)
+                continue
+
+            run_task = asyncio.ensure_future(agent.prompt(line))
+            await _run_streaming(agent, run_task, line_queue)
+    finally:
+        reader_task.cancel()
 
 
 def cli() -> None:
