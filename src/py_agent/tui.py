@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Optional
 
 from textual.app import App, ComposeResult
@@ -55,10 +56,11 @@ class PyAgentApp(App):
     }
     """
 
-    def __init__(self, agent: Agent, cwd: str) -> None:
+    def __init__(self, agent: Agent, cwd: str, session_path: Path) -> None:
         super().__init__()
         self.agent = agent
         self.cwd = cwd
+        self.session_path = session_path
         self._run_task: Optional[asyncio.Task] = None
         self._assistant_buffer = ""
         self._steer_count = 0
@@ -78,7 +80,8 @@ class PyAgentApp(App):
     def on_mount(self) -> None:
         log = self.query_one("#output", RichLog)
         log.write(
-            f"py-agent ready. cwd={self.cwd}. Commands: /save <file>, /load <file>, /quit. "
+            f"py-agent ready. cwd={self.cwd}. session={self.session_path}. "
+            f"Commands: /save <file>, /load <file>, /quit. "
             f"While running: type to queue a follow-up, /steer <msg> to inject, /abort to stop."
         )
         self.query_one("#prompt", Input).focus()
@@ -145,6 +148,10 @@ class PyAgentApp(App):
         except Exception as exc:
             log.write(f"[error] {exc}")
         finally:
+            try:
+                save_session(str(self.session_path), self.agent.messages)
+            except Exception as exc:
+                log.write(f"[error] auto-save failed: {exc}")
             self._refresh_status()
 
     def _flush_assistant_buffer(self) -> None:
