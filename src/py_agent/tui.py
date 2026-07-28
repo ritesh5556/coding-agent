@@ -6,10 +6,41 @@ from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
+from textual.suggester import Suggester
 from textual.widgets import Footer, Input, RichLog, Static
 
 from .agent import Agent
 from .utils.session import load_session, save_session
+from .utils.session_paths import new_session_path
+
+IDLE_COMMANDS = {
+    "/new": "start a new session",
+    "/save": "save transcript to <file>",
+    "/load": "load transcript from <file>",
+    "/quit": "exit py-agent",
+    "/exit": "exit py-agent",
+}
+
+STREAMING_COMMANDS = {
+    "/steer": "inject <message> at the next turn boundary",
+    "/followup": "queue <message> for when the agent would stop",
+    "/abort": "stop the current run",
+}
+
+
+class CommandSuggester(Suggester):
+    def __init__(self, app: "PyAgentApp") -> None:
+        super().__init__(case_sensitive=True)
+        self._app = app
+
+    async def get_suggestion(self, value: str) -> Optional[str]:
+        if not value.startswith("/") or " " in value:
+            return None
+        commands = STREAMING_COMMANDS if self._app.agent.is_streaming else IDLE_COMMANDS
+        matches = [cmd for cmd in commands if cmd.startswith(value)]
+        if len(matches) != 1 or matches[0] == value:
+            return None
+        return matches[0]
 
 
 def route_streaming_line(agent: Agent, line: str) -> Optional[str]:
@@ -51,6 +82,12 @@ class PyAgentApp(App):
         color: $text-muted;
         padding: 0 1;
     }
+    #hints {
+        height: 1;
+        background: $panel-darken-1;
+        color: $text-muted;
+        padding: 0 1;
+    }
     #prompt {
         dock: bottom;
     }
@@ -70,9 +107,11 @@ class PyAgentApp(App):
         yield Vertical(
             RichLog(id="output", wrap=True, markup=True, highlight=False),
             Static(self._status_text(), id="status"),
+            Static(self._hints_text(""), id="hints"),
             Input(
                 id="prompt",
-                placeholder="message, or /steer /followup /abort /save /load /quit",
+                placeholder="message, or /new /steer /followup /abort /save /load /quit",
+                suggester=CommandSuggester(self),
             ),
         )
         yield Footer()
@@ -81,7 +120,7 @@ class PyAgentApp(App):
         log = self.query_one("#output", RichLog)
         log.write(
             f"py-agent ready. cwd={self.cwd}. session={self.session_path}. "
-            f"Commands: /save <file>, /load <file>, /quit. "
+            f"Commands: /new, /save <file>, /load <file>, /quit. "
             f"While running: type to queue a follow-up, /steer <msg> to inject, /abort to stop."
         )
         self.query_one("#prompt", Input).focus()
@@ -92,6 +131,23 @@ class PyAgentApp(App):
 
     def _refresh_status(self) -> None:
         self.query_one("#status", Static).update(self._status_text())
+        self._refresh_hints(self.query_one("#prompt", Input).value)
+
+    def _hints_text(self, value: str) -> str:
+        commands = STREAMING_COMMANDS if self.agent.is_streaming else IDLE_COMMANDS
+        if value.startswith("/") and " " not in value:
+            matches = {cmd: desc for cmd, desc in commands.items() if cmd.startswith(value)}
+        else:
+            matches = commands
+        if not matches:
+            return "no matching commands"
+        return "  ".join(f"{cmd} ({desc})" for cmd, desc in matches.items())
+
+    def _refresh_hints(self, value: str = "") -> None:
+        self.query_one("#hints", Static).update(self._hints_text(value))
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self._refresh_hints(event.value)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         line = event.value
@@ -116,6 +172,21 @@ class PyAgentApp(App):
 
         if stripped in ("/quit", "/exit"):
             self.exit()
+            return
+
+        if stripped == "/new":
+            try:
+                self.agent.reset()
+            except RuntimeError as exc:
+                log.write(f"[error] {exc}")
+                return
+            self.session_path = new_session_path(self.cwd)
+            self._assistant_buffer = ""
+            self._steer_count = 0
+            self._follow_up_count = 0
+            log.clear()
+            log.write(f"[new session] {self.session_path}")
+            self._refresh_status()
             return
 
         if stripped.startswith("/save "):

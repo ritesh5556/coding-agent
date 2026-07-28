@@ -15,7 +15,7 @@ def sessions_dir_for_cwd(cwd: str) -> Path:
 
 
 def new_session_path(cwd: str) -> Path:
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S%f")
     return sessions_dir_for_cwd(cwd) / f"{timestamp}.jsonl"
 
 
